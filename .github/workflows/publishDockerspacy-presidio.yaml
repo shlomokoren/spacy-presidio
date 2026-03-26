@@ -1,0 +1,60 @@
+name: Run Python Script
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '42 21 * * *'
+  push:
+    branches:
+      - main
+
+jobs:
+  docker_spacy_presidio_script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set current date
+        run: echo "DATE=$(date -u +%Y-%m-%d)" >> $GITHUB_ENV
+
+      - name: Docker Login
+        uses: docker/login-action@v3
+        with:
+          username: shlomoko11
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build and push Docker images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            shlomoko11/spacy-presidio:latest
+            shlomoko11/spacy-presidio:${{ github.run_number }}
+          labels: |
+            build.date=${{ env.DATE }}
+          cache-from: type=registry,ref=shlomoko11/spacy-presidio:latest
+          cache-to: type=inline
+
+  notify-on-failure:
+    needs: docker_spacy_presidio_script
+    if: failure()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send failure notification email
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: 'GitHub Action Failed'
+          to: shlomo.koren@poalim.co.il
+          from: GitHub Action <shlomoko.koren@gmail.com>
+          body: |
+            Job failed:
+            https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
